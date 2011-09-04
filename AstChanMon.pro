@@ -4,20 +4,20 @@
 QT += core \
     gui \
     network
-TARGET = AstChanMon
+TARGET = astchanmon
 TEMPLATE = app
-SOURCES += main.cpp \
-    astchanmon.cpp \
-    astmaniface.cpp \
-    asthostform.cpp \
-    flowlayout.cpp \
-    astchanform.cpp
-HEADERS += astchanmon.h \
-    astmaniface.h \
-    asthostform.h \
-    flowlayout.h \
-    astchanform.h
-FORMS += astchanmon.ui \
-    asthostform.ui \
-    astchanform.ui
+SOURCES += src/main.cpp \
+    src/astchanmon.cpp \
+    src/astmaniface.cpp \
+    src/asthostform.cpp \
+    src/flowlayout.cpp \
+    src/astchanform.cpp
+HEADERS += src/astchanmon.h \
+    src/astmaniface.h \
+    src/asthostform.h \
+    src/flowlayout.h \
+    src/astchanform.h
+FORMS += ui/astchanmon.ui \
+    ui/asthostform.ui \
+    ui/astchanform.ui
 RESOURCES += icon/icon.qrc
