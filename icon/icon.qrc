@@ -1,0 +1,16 @@
+<RCC>
+    <qresource prefix="/toolbar">
+        <file>disconnect.png</file>
+        <file>connect.png</file>
+        <file>wrench_orange.png</file>
+    </qresource>
+    <qresource prefix="/state">
+        <file alias="Rsrvd">accept.png</file>
+        <file alias="Down">arrow_down.png</file>
+        <file alias="Up">arrow_up.png</file>
+        <file alias="Ringing">sound.png</file>
+        <file alias="Ring">sound_none.png</file>
+        <file alias="Dialing">telephone_go.png</file>
+        <file alias="Clear">weather_sun.png</file>
+    </qresource>
+</RCC>
