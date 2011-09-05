@@ -118,6 +118,7 @@ void AstManIface::onReadyRead()
     QHash<QString, QString> paramsHash;
     QStringList paramsField;
     QRegExp keyValue("^([A-Za-z]+):\\s(.+)");
+    int foundPos = 0;
 
     while (canReadLine()) {
         line = readLine().trimmed();
@@ -129,7 +130,11 @@ void AstManIface::onReadyRead()
                 parameters.removeFirst();
 
                 for (int i = 0; i < parameters.size(); ++i) {
-                    keyValue.indexIn(parameters.at(i));
+                    foundPos = keyValue.indexIn(parameters.at(i));
+
+                    if (foundPos == -1) {
+                        continue;
+                    }
 
                     paramsField = keyValue.capturedTexts();
                     paramsHash[paramsField.at(1)] = paramsField.last();
@@ -139,8 +144,22 @@ void AstManIface::onReadyRead()
             if (field.first() == "Event") {
                 emit ReceiveEvent(field.last(), paramsHash);
 
-                ReadEvent(field.last(), parameters);
+//                ReadEvent(field.last(), parameters);
             } else if (field.first() == "Response") {
+                if (field.last() == "Follows") {
+                    QStringList totals;
+                    QRegExp totalActive("([0-9]+)\\s[A-Za-z].+");
+                    int paramsCount = parameters.count();
+
+                    totalActive.indexIn(parameters.at(paramsCount - 3));
+                    totals = totalActive.capturedTexts();
+                    paramsHash["ActiveChannels"] = totals.at(1);
+
+                    totalActive.indexIn(parameters.at(paramsCount - 2));
+                    totals = totalActive.capturedTexts();
+                    paramsHash["ActiveCalls"] = totals.at(1);
+                }
+
                 emit ReceiveResponse(field.last(), paramsHash);
 
                 ReadResponse(field.last(), parameters);

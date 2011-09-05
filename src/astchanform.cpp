@@ -48,6 +48,8 @@ void AstChanForm::setLabel(int label, QString value)
 
         if (value == "Clear") {
             ui->frame->setStyleSheet("background-color: #d2d2d2; border-radius: 6;");
+        } else if (value == "Dial") {
+            ui->frame->setStyleSheet("background-color: #cabf8a; border-radius: 6;");
         } else if (value == "Dialing") {
             ui->frame->setStyleSheet("background-color: #edb667; border-radius: 6;");
         } else if (value == "Ring") {
@@ -58,6 +60,8 @@ void AstChanForm::setLabel(int label, QString value)
             ui->frame->setStyleSheet("background-color: #a8d69c; border-radius: 6;");
         } else if (value == "Down") {
             ui->frame->setStyleSheet("background-color: #ec9a9a; border-radius: 6;");
+        } else {
+            ui->frame->setStyleSheet("background-color: #d2d2d2; border-radius: 6;");
         }
         break;
     case 6:  // Unique ID

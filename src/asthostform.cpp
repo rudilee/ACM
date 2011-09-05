@@ -5,27 +5,11 @@ AstHostForm::AstHostForm(QWidget *parent) :
     QWidget(parent),
     ui(new Ui::AstHostForm)
 {
-    QStringList header;
+    activeChannels = 0;
+    activeCalls = 0;
 
-    channelsFormsLayout = new FlowLayout();
-    dahdiFormsLayout = new FlowLayout();
-
-    ui->setupUi(this);
-    ui->cdrTableView->setModel(&cdrModel);
-    ui->channelsAreaWidgetContents->setLayout(channelsFormsLayout);
-    ui->dahdiAreaWidgetContents->setLayout(dahdiFormsLayout);
-
-    header /*<< "Privilege" << "Fullname" << "Account Code"*/ << "Source" /*<< "Status"*/ << "Destination" << "Destination Context"
-            << "Caller ID" << "Channel" << "Destination Channel" << "Last Application" << "Last Data" << "Start Time"
-            << "Answer Time" << "End Time" << "Duration" << "Billable Seconds" << "Disposition" /*<< "AMA Flags"*/
-            << "Unique ID" /*<< "User Field"*/;
-
-    cdrModel.setHorizontalHeaderLabels(header);
-
-    setupDahdi();
-
-    connect(&amiSocket, SIGNAL(ReceiveEvent(QString,QHash<QString,QString>)), this, SLOT(onEventReceived(QString,QHash<QString,QString>)));
-    connect(&amiSocket, SIGNAL(ReceiveResponse(QString,QHash<QString,QString>)), this, SLOT(onResponseReceived(QString,QHash<QString,QString>)));
+    setupWidget();
+    setupSocket();
 }
 
 AstHostForm::~AstHostForm()
@@ -45,17 +29,25 @@ void AstHostForm::changeEvent(QEvent *e)
     }
 }
 
-void AstHostForm::onConnectionTriggered(bool checked)
+void AstHostForm::connectServer(QString host, int port, QString username, QString password)
 {
-    if (checked) {
-        amiSocket.ActionLogin("192.168.11.8", 5038, "test", "kampret");
-    } else {
-        amiSocket.ActionLogoff();
-    }
+    amiSocket.ActionLogin(host, port, username, password);
+}
+
+void AstHostForm::disconnectServer()
+{
+    amiSocket.ActionLogoff();
+
+    activeChannels = 0;
+    activeCalls = 0;
+
+    refreshCounts();
 }
 
 void AstHostForm::onEventReceived(QString event, QHash<QString, QString> parameters)
 {
+    AstChanForm *astChanForm;
+
     if (event == "Cdr") {
         QList<QStandardItem *> cdrList;
 
@@ -67,61 +59,85 @@ void AstHostForm::onEventReceived(QString event, QHash<QString, QString> paramet
                  << new QStandardItem(parameters["Duration"]) << new QStandardItem(parameters["BillableSeconds"]) << new QStandardItem(parameters["Disposition"])
                  /*<< new QStandardItem(parameters["AMAFlags"])*/ << new QStandardItem(parameters["UniqueID"]) /*<< new QStandardItem(parameters["UserField"])*/;
 
-        if (cdrModel.rowCount() == 25) {
-            cdrModel.takeRow(24);
+        if (cdrModel.rowCount() == 30) {
+            cdrModel.takeRow(29);
         }
 
         cdrModel.insertRow(0, cdrList);
     } else if (event == "Status") {
-        newAstChanForm(parameters["Channel"]);
-        astChanForms[parameters["Channel"]]->setLabel(0, parameters["Channel"]);
-        astChanForms[parameters["Channel"]]->setLabel(1, parameters["CallerID"].append(" ").append(parameters["CallerIDName"]));
-        astChanForms[parameters["Channel"]]->setLabel(2, parameters["Context"].isEmpty() ? "..." : parameters["Context"]);
-        astChanForms[parameters["Channel"]]->setLabel(3, parameters["Extension"].isEmpty() ? "..." : parameters["Extension"].append(",").append(parameters["Priority"]));
-        astChanForms[parameters["Channel"]]->setLabel(5, parameters["State"]);
-        astChanForms[parameters["Channel"]]->setLabel(6, parameters["Uniqueid"]);
+        astChanForm = newAstChanForm(parameters["Uniqueid"]);
+
+        astChanForm->setLabel(0, parameters["Channel"]);
+        astChanForm->setLabel(1, parameters["CallerID"].append(" ").append(parameters["CallerIDName"]));
+        astChanForm->setLabel(2, parameters["Context"].isEmpty() ? "..." : parameters["Context"]);
+        astChanForm->setLabel(3, parameters["Extension"].isEmpty() ? "..." : parameters["Extension"].append(",").append(parameters["Priority"]));
+        astChanForm->setLabel(5, parameters["State"]);
+        astChanForm->setLabel(6, parameters["Uniqueid"]);
     } else if (event == "Newcallerid") {
-        newAstChanForm(parameters["Channel"]);
-        astChanForms[parameters["Channel"]]->setLabel(0, parameters["Channel"]);
-        astChanForms[parameters["Channel"]]->setLabel(1, parameters["CallerID"].append(" ").append(parameters["CallerIDName"]));
-        astChanForms[parameters["Channel"]]->setLabel(6, parameters["Uniqueid"]);
+        astChanForm = newAstChanForm(parameters["Uniqueid"]);
+
+        astChanForm->setLabel(0, parameters["Channel"]);
+        astChanForm->setLabel(1, parameters["CallerID"].append(" ").append(parameters["CallerIDName"]));
+        astChanForm->setLabel(6, parameters["Uniqueid"]);
     } else if (event == "Newchannel") {
-        newAstChanForm(parameters["Channel"]);
-        astChanForms[parameters["Channel"]]->setLabel(0, parameters["Channel"]);
-        astChanForms[parameters["Channel"]]->setLabel(1, parameters["CallerID"].append(" ").append(parameters["CallerIDName"]));
-        astChanForms[parameters["Channel"]]->setLabel(5, parameters["State"]);
-        astChanForms[parameters["Channel"]]->setLabel(6, parameters["Uniqueid"]);
+        astChanForm = newAstChanForm(parameters["Uniqueid"]);
+
+        astChanForm->setLabel(0, parameters["Channel"]);
+        astChanForm->setLabel(1, parameters["CallerID"].append(" ").append(parameters["CallerIDName"]));
+        astChanForm->setLabel(5, parameters["State"]);
+        astChanForm->setLabel(6, parameters["Uniqueid"]);
+
+        activeChannels++;
+        refreshCounts();
     } else if (event == "Newexten") {
-        newAstChanForm(parameters["Channel"]);
-        astChanForms[parameters["Channel"]]->setLabel(0, parameters["Channel"]);
-        astChanForms[parameters["Channel"]]->setLabel(2, parameters["Context"]);
-        astChanForms[parameters["Channel"]]->setLabel(3, parameters["Extension"].append(",").append(parameters["Priority"]).append(",").append(parameters["Application"]).append("()"));
-        astChanForms[parameters["Channel"]]->setLabel(4, parameters["AppData"]);
-        astChanForms[parameters["Channel"]]->setLabel(6, parameters["Uniqueid"]);
+        astChanForm = newAstChanForm(parameters["Uniqueid"]);
+
+        astChanForm->setLabel(0, parameters["Channel"]);
+        astChanForm->setLabel(2, parameters["Context"]);
+        astChanForm->setLabel(3, parameters["Extension"].append(",").append(parameters["Priority"]).append(",").append(parameters["Application"]).append("()"));
+        astChanForm->setLabel(4, parameters["AppData"]);
+        astChanForm->setLabel(6, parameters["Uniqueid"]);
     } else if (event == "Newstate") {
-        newAstChanForm(parameters["Channel"]);
-        astChanForms[parameters["Channel"]]->setLabel(0, parameters["Channel"]);
-        astChanForms[parameters["Channel"]]->setLabel(1, parameters["CallerID"].append(" ").append(parameters["CallerIDName"]));
-        astChanForms[parameters["Channel"]]->setLabel(5, parameters["State"]);
-        astChanForms[parameters["Channel"]]->setLabel(6, parameters["Uniqueid"]);
-    } else if (event == "Rename") {
-        //
+        astChanForm = newAstChanForm(parameters["Uniqueid"]);
+
+        astChanForm->setLabel(0, parameters["Channel"]);
+        astChanForm->setLabel(1, parameters["CallerID"].append(" ").append(parameters["CallerIDName"]));
+        astChanForm->setLabel(5, parameters["State"]);
+        astChanForm->setLabel(6, parameters["Uniqueid"]);
     } else if (event == "Dial") {
-        newAstChanForm(parameters["Channel"]);
-        astChanForms[parameters["Channel"]]->setLabel(0, parameters["Source"]);
-        astChanForms[parameters["Channel"]]->setLabel(1, parameters["CallerID"].append(" ").append(parameters["CallerIDName"]));
-        astChanForms[parameters["Channel"]]->setLabel(6, parameters["Uniqueid"]);
+        astChanForm = newAstChanForm(parameters["Uniqueid"]);
+
+        astChanForm->setLabel(0, parameters["Source"]);
+        astChanForm->setLabel(1, parameters["CallerID"].append(" ").append(parameters["CallerIDName"]));
+        astChanForm->setLabel(5, parameters["State"]);
+        astChanForm->setLabel(6, parameters["Uniqueid"]);
 
         if (parameters["Uniqueid"].isEmpty()) {
-            deleteAstChanForm(parameters["Channel"]);
+            deleteAstChanForm(parameters["Uniqueid"]);
         }
     } else if (event == "Link") {
-        // Nothing To Do.. (Yet :P)
+        activeCalls++;
+        refreshCounts();
     } else if (event == "Unlink") {
-        // Nothing To Do too.. (Yet :P)
+        if (activeCalls > 0) {
+            activeCalls--;
+            refreshCounts();
+        }
     } else if (event == "Hangup") {
-        deleteAstChanForm(parameters["Channel"]);
-    }
+        deleteAstChanForm(parameters["Uniqueid"]);
+
+        if (activeChannels > 0) {
+            activeChannels--;
+            refreshCounts();
+        }
+    }/* else {
+        qDebug("<++");
+        qDebug(event.toLatin1().data());
+        qDebug(parameters["Uniqueid"].toLatin1().data());
+        qDebug("++>");
+    }*/
+
+    astChanForm = NULL;
 }
 
 void AstHostForm::onResponseReceived(QString response, QHash<QString, QString> parameters)
@@ -129,98 +145,81 @@ void AstHostForm::onResponseReceived(QString response, QHash<QString, QString> p
     if (response == "Success") {
         if (parameters["Message"] == "Authentication accepted") {
             amiSocket.ActionStatus("", "ListChannels");
+            amiSocket.ActionCommand("show channels", "ShowChannels");
         }
     } else if (response == "Error") {
         if (parameters["Message"] == "Authentication failed") {
             amiSocket.disconnectFromHost();
         }
+    } else if (response == "Follows") {
+        activeChannels = parameters["ActiveChannels"].toInt();
+        activeCalls = parameters["ActiveCalls"].toInt();
+
+        refreshCounts();
     } else if (response == "Goodbye") {
         QHashIterator<QString, AstChanForm *> astChanForm(astChanForms);
 
         while (astChanForm.hasNext()) {
             astChanForm.next();
 
-            if (astChanForm.key().startsWith("Zap")) {
-                astChanForm.value()->setLabel(1, "...");
-                astChanForm.value()->setLabel(2, "...");
-                astChanForm.value()->setLabel(3, "...");
-                astChanForm.value()->setLabel(5, "Clear");
-                astChanForm.value()->setLabel(6, "...");
-            } else {
-                channelsFormsLayout->removeWidget(astChanForm.value());
+            channelsFormsLayout->removeWidget(astChanForm.value());
 
-                delete astChanForm.value();
-                astChanForms.remove(astChanForm.key());
-            }
+            delete astChanForm.value();
+            astChanForms.remove(astChanForm.key());
         }
     }
 }
 
-void AstHostForm::setupDahdi()
+void AstHostForm::setupWidget()
 {
-    QString channel;
+    QStringList header;
 
-    for (int i = 1; i < 16; i++) {
-        channel = QString("Zap/").append(QVariant(i).toString().append("-1"));
-        astChanForms[channel] = new AstChanForm(this);
-        astChanForms[channel]->setLabel(0, channel);
+    channelsFormsLayout = new FlowLayout();
 
-        dahdiFormsLayout->addWidget(astChanForms[channel]);
+    ui->setupUi(this);
+    ui->cdrTableView->setModel(&cdrModel);
+    ui->channelsAreaWidgetContents->setLayout(channelsFormsLayout);
+
+    header /*<< "Privilege" << "Fullname" << "Account Code"*/ << "Source" /*<< "Status"*/ << "Destination" << "Destination Context"
+            << "Caller ID" << "Channel" << "Destination Channel" << "Last Application" << "Last Data" << "Start Time"
+            << "Answer Time" << "End Time" << "Duration" << "Billable Seconds" << "Disposition" /*<< "AMA Flags"*/
+            << "Unique ID" /*<< "User Field"*/;
+
+    cdrModel.setHorizontalHeaderLabels(header);
+}
+
+void AstHostForm::setupSocket()
+{
+    connect(&amiSocket, SIGNAL(ReceiveEvent(QString,QHash<QString,QString>)), this, SLOT(onEventReceived(QString,QHash<QString,QString>)));
+    connect(&amiSocket, SIGNAL(ReceiveResponse(QString,QHash<QString,QString>)), this, SLOT(onResponseReceived(QString,QHash<QString,QString>)));
+}
+
+AstChanForm *AstHostForm::newAstChanForm(QString uniqueid)
+{
+    if (!astChanForms.contains(uniqueid)) {
+        astChanForms[uniqueid] = new AstChanForm(this);
+
+        channelsFormsLayout->addWidget(astChanForms[uniqueid]);
     }
 
-    for (int i = 17; i < 32; i++) {
-        channel = QString("Zap/").append(QVariant(i).toString().append("-1"));
-        astChanForms[channel] = new AstChanForm(this);
-        astChanForms[channel]->setLabel(0, channel);
-
-        dahdiFormsLayout->addWidget(astChanForms[channel]);
-    }
-
-    for (int i = 32; i < 47; i++) {
-        channel = QString("Zap/").append(QVariant(i).toString().append("-1"));
-        astChanForms[channel] = new AstChanForm(this);
-        astChanForms[channel]->setLabel(0, channel);
-
-        dahdiFormsLayout->addWidget(astChanForms[channel]);
-    }
-
-    for (int i = 48; i < 63; i++) {
-        channel = QString("Zap/").append(QVariant(i).toString().append("-1"));
-        astChanForms[channel] = new AstChanForm(this);
-        astChanForms[channel]->setLabel(0, channel);
-
-        dahdiFormsLayout->addWidget(astChanForms[channel]);
+    if (astChanForms.contains(uniqueid)) {
+        return astChanForms[uniqueid];
+    } else {
+        return NULL;
     }
 }
 
-void AstHostForm::newAstChanForm(QString channel)
+void AstHostForm::deleteAstChanForm(QString uniqueid)
 {
-    if (channel.startsWith("Zap")) {
-        return;
-    }
+    if (astChanForms.contains(uniqueid)) {
+        channelsFormsLayout->removeWidget(astChanForms[uniqueid]);
 
-    if (!astChanForms.contains(channel)) {
-        astChanForms[channel] = new AstChanForm(this);
-
-        channelsFormsLayout->addWidget(astChanForms[channel]);
+        delete astChanForms[uniqueid];
+        astChanForms.remove(uniqueid);
     }
 }
 
-void AstHostForm::deleteAstChanForm(QString channel)
+void AstHostForm::refreshCounts()
 {
-    if (astChanForms.contains(channel)) {
-        if (channel.startsWith("Zap")) {
-            astChanForms[channel]->setLabel(1, "...");
-            astChanForms[channel]->setLabel(2, "...");
-            astChanForms[channel]->setLabel(3, "...");
-            astChanForms[channel]->setLabel(5, "Clear");
-            astChanForms[channel]->setLabel(6, "...");
-            return;
-        }
-
-        channelsFormsLayout->removeWidget(astChanForms[channel]);
-
-        delete astChanForms[channel];
-        astChanForms.remove(channel);
-    }
+    emit changeActiveCounts(activeChannels, activeCalls);
 }

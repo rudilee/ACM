@@ -15,8 +15,12 @@ namespace Ui {
 class AstHostForm : public QWidget {
     Q_OBJECT
 
+signals:
+    void changeActiveCounts(int activeChannels, int activeCalls);
+
 public slots:
-    void onConnectionTriggered(bool checked = false);
+    void connectServer(QString host, int port, QString username, QString password);
+    void disconnectServer();
 
 private slots:
     void onEventReceived(QString subject, QHash<QString, QString> parameters);
@@ -36,11 +40,13 @@ private:
     AstManIface amiSocket;
     QHash<QString, AstChanForm *> astChanForms;
     FlowLayout *channelsFormsLayout;
-    FlowLayout *dahdiFormsLayout;
+    int activeChannels, activeCalls;
 
-    void setupDahdi();
-    void newAstChanForm(QString channel);
+    void setupWidget();
+    void setupSocket();
+    AstChanForm *newAstChanForm(QString channel);
     void deleteAstChanForm(QString channel);
+    void refreshCounts();
 };
 
 #endif // ASTHOSTFORM_H
