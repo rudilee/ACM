@@ -14,12 +14,21 @@
    <string>Asterisk Channel Monitor</string>
   </property>
   <property name="windowIcon">
-   <iconset resource="icon/icon.qrc">
+   <iconset resource="../icon/icon.qrc">
     <normaloff>:/appicon/asterisk 16 x.png</normaloff>:/appicon/asterisk 16 x.png</iconset>
   </property>
   <widget class="QWidget" name="centralWidget">
    <layout class="QVBoxLayout" name="verticalLayout">
-    <property name="margin">
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
      <number>0</number>
     </property>
    </layout>
@@ -84,7 +93,7 @@
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset resource="icon/icon.qrc">
+    <iconset resource="../icon/icon.qrc">
      <normaloff>:/toolbar/disconnect.png</normaloff>
      <activeon>:/toolbar/connect.png</activeon>:/toolbar/disconnect.png</iconset>
    </property>
@@ -129,7 +138,7 @@
  </widget>
  <layoutdefault spacing="6" margin="11"/>
  <resources>
-  <include location="icon/icon.qrc"/>
+  <include location="../icon/icon.qrc"/>
  </resources>
  <connections>
   <connection>

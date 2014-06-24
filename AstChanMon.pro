@@ -3,7 +3,8 @@
 # -------------------------------------------------
 QT += core \
     gui \
-    network
+    network \
+    widgets
 TARGET = astchanmon
 TEMPLATE = app
 SOURCES += src/main.cpp \
