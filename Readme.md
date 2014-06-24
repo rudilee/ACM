@@ -3,10 +3,12 @@ ACM (Asterisk Channel Monitor) is a realtime channels activity monitoring tool f
 
 ## Prerequisites
 To build AstChanMon you'll need Qt GUI toolkit version 4.6 or later.
-### Qt libraries (>= 4.6)
+### Qt libraries >= 4.6
 * Qt Core
 * Qt Gui
 * Qt Network
+ 
+### Asterisk Manager API >= 1.3
 
 ## Binaries
 ### Current version:
