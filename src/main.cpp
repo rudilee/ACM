@@ -1,11 +1,16 @@
+#include "mainwindow.h"
+
 #include <QApplication>
-#include "astchanmon.h"
 
 int main(int argc, char *argv[])
 {
-    QApplication a(argc, argv);
-    AstChanMon astChanMon;
-    astChanMon.show();
+    QApplication::setOrganizationDomain("Kanaya Hijab");
+    QApplication::setApplicationName("Asterisk Channel Monitor");
 
-    return a.exec();
+    QApplication app(argc, argv);
+
+    MainWindow mainWindow;
+    mainWindow.show();
+
+    return app.exec();
 }

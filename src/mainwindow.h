@@ -1,41 +1,39 @@
-#ifndef ASTCHANMON_H
-#define ASTCHANMON_H
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <QLabel>
-#include <QLineEdit>
-#include <QSpinBox>
-
-#include "asthostform.h"
+#include <QToolButton>
+#include <QMdiArea>
 
 namespace Ui {
-    class AstChanMon;
+class MainWindow;
 }
 
-class AstChanMon : public QMainWindow
+class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
-private slots:
-    void on_actionFullscreen_triggered(bool checked = false);
-    void on_actionMainToolbar_triggered(bool checked = false);
-    void on_actionStatusbar_triggered(bool checked = false);
-    void on_actionAbout_triggered();
-    void on_actionConnection_triggered(bool checked = false);
-    void onActiveCountsChanged(int activeChannels, int activeCalls);
-
 public:
-    explicit AstChanMon(QWidget *parent = 0);
-    ~AstChanMon();
+    explicit MainWindow(QWidget *parent = 0);
+    ~MainWindow();
 
 private:
-    Ui::AstChanMon *ui;
+    Ui::MainWindow *ui;
+    QToolButton *sessionManagerButton;
+    QMenu *sessionManagerMenu;
+    QMdiArea *sessionArea;
 
-    QFlags<Qt::WindowState> lastWindowState;
-    QLabel hostLabel, usernameLabel, secretLabel, channelsLabel, callsLabel, channelsCount, callsCount;
-    QLineEdit hostEntry, usernameEntry, secretEntry;
-    QSpinBox portEntry;
-    AstHostForm *astHostForm;
+    void setup();
+    void populateSession();
+    void openSessionWindow(QString name, QString hostname = "", quint16 port = 0, QString username = "", QString password = "");
+
+private slots:
+    void showSessionManager();
+
+    void onSubWindowActivated(QMdiSubWindow *window);
+    void onSessionMenuTriggered(QAction *action);
+
+    void on_actionCloseSession_triggered();
 };
 
-#endif // ASTCHANMON_H
+#endif // MAINWINDOW_H

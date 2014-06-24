@@ -1,52 +1,43 @@
-#ifndef ASTHOSTFORM_H
-#define ASTHOSTFORM_H
+#ifndef SESSIONWINDOW_H
+#define SESSIONWINDOW_H
 
-#include <QWidget>
-#include <QStandardItemModel>
-
-#include "astmaniface.h"
-#include "astchanform.h"
+#include "asteriskmanager.h"
+#include "channelframe.h"
 #include "flowlayout.h"
 
+#include <QWidget>
+
 namespace Ui {
-    class AstHostForm;
+class SessionWindow;
 }
 
-class AstHostForm : public QWidget {
+class SessionWindow : public QWidget
+{
     Q_OBJECT
 
-signals:
-    void changeActiveCounts(int activeChannels, int activeCalls);
-
-public slots:
-    void connectServer(QString host, int port, QString username, QString password);
-    void disconnectServer();
-
-private slots:
-    void onEventReceived(QString subject, QHash<QString, QString> parameters);
-    void onResponseReceived(QString subject, QHash<QString, QString> parameters);
-
 public:
-    AstHostForm(QWidget *parent = 0);
-    ~AstHostForm();
-
-protected:
-    void changeEvent(QEvent *e);
+    explicit SessionWindow(QWidget *parent,
+                           QString hostname,
+                           quint16 port,
+                           QString username,
+                           QString password);
+    ~SessionWindow();
 
 private:
-    Ui::AstHostForm *ui;
+    Ui::SessionWindow *ui;
+    AsteriskManager asterisk;
+    QString username, password;
+    QHash<QString, ChannelFrame *> channels;
+    FlowLayout layout;
 
-    QStandardItemModel cdrModel;
-    AstManIface amiSocket;
-    QHash<QString, AstChanForm *> astChanForms;
-    FlowLayout *channelsFormsLayout;
-    int activeChannels, activeCalls;
+    void setup(QString hostname, quint16 port);
+    void addChannel(QString channel, QString duration);
+    void removeChannel(QString channel);
 
-    void setupWidget();
-    void setupSocket();
-    AstChanForm *newAstChanForm(QString channel);
-    void deleteAstChanForm(QString channel);
-    void refreshCounts();
+private slots:
+    void onAsteriskConnected();
+    void onAsteriskReceiveResponse(Asterisk::Response response, QHash<QString, QString> headers);
+    void onAsteriskReceiveEvent(Asterisk::Event event, QHash<QString, QString> headers);
 };
 
-#endif // ASTHOSTFORM_H
+#endif // SESSIONWINDOW_H

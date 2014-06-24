@@ -1,116 +1,139 @@
-#include <QMessageBox>
+#include "mainwindow.h"
+#include "ui_mainwindow.h"
+#include "sessionmanagerdialog.h"
+#include "sessionwindow.h"
 
-#include "astchanmon.h"
-#include "ui_astchanmon.h"
+#include <QSettings>
+#include <QMdiSubWindow>
+#include <QDebug>
 
-AstChanMon::AstChanMon(QWidget *parent) :
+MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
-    ui(new Ui::AstChanMon)
+    ui(new Ui::MainWindow),
+    sessionManagerButton(new QToolButton),
+    sessionManagerMenu(new QMenu),
+    sessionArea(new QMdiArea(this))
 {
-    astHostForm = new AstHostForm(this);
-
     ui->setupUi(this);
-    ui->actionMainToolbar->setChecked(true);
-    ui->actionStatusbar->setChecked(true);
-    ui->mainToolBar->insertWidget(ui->actionConnection, &hostLabel);
-    ui->mainToolBar->insertWidget(ui->actionConnection, new QLabel(" "));
-    ui->mainToolBar->insertWidget(ui->actionConnection, &hostEntry);
-    ui->mainToolBar->insertWidget(ui->actionConnection, new QLabel(" : "));
-    ui->mainToolBar->insertWidget(ui->actionConnection, &portEntry);
-    ui->mainToolBar->insertWidget(ui->actionConnection, new QLabel(" "));
-    ui->mainToolBar->insertWidget(ui->actionConnection, &usernameLabel);
-    ui->mainToolBar->insertWidget(ui->actionConnection, new QLabel(" "));
-    ui->mainToolBar->insertWidget(ui->actionConnection, &usernameEntry);
-    ui->mainToolBar->insertWidget(ui->actionConnection, new QLabel(" "));
-    ui->mainToolBar->insertWidget(ui->actionConnection, &secretLabel);
-    ui->mainToolBar->insertWidget(ui->actionConnection, new QLabel(" "));
-    ui->mainToolBar->insertWidget(ui->actionConnection, &secretEntry);
-    ui->mainToolBar->insertWidget(ui->actionConnection, new QLabel(" "));
 
-    ui->statusBar->insertWidget(0, &channelsLabel);
-    ui->statusBar->insertWidget(1, &channelsCount);
-    ui->statusBar->insertWidget(2, &callsLabel);
-    ui->statusBar->insertWidget(3, &callsCount);
+    setup();
 
-    hostLabel.setPixmap(QPixmap(":/toolbar/host"));
-    hostEntry.setFixedWidth(150);
-    portEntry.setFixedWidth(60);
-    portEntry.setMinimum(2000);
-    portEntry.setMaximum(20000);
-    portEntry.setValue(5038);
-    usernameLabel.setPixmap(QPixmap(":/toolbar/username"));
-    usernameEntry.setFixedWidth(100);
-    secretLabel.setPixmap(QPixmap(":/toolbar/secret"));
-    secretEntry.setFixedWidth(100);
-    secretEntry.setEchoMode(QLineEdit::Password);
-
-    channelsLabel.setPixmap(QPixmap(":/statusbar/active_channels"));
-    channelsCount.setText("0 Channels");
-    callsLabel.setPixmap(QPixmap(":/statusbar/active_calls"));
-    callsCount.setText("0 Calls");
-
-    setCentralWidget(astHostForm);
-
-    connect(astHostForm, SIGNAL(changeActiveCounts(int,int)), this, SLOT(onActiveCountsChanged(int,int)));
+    connect(sessionManagerButton, SIGNAL(clicked()), SLOT(showSessionManager()));
+    connect(sessionArea, SIGNAL(subWindowActivated(QMdiSubWindow*)), SLOT(onSubWindowActivated(QMdiSubWindow*)));
+    connect(sessionManagerMenu, SIGNAL(triggered(QAction*)), SLOT(onSessionMenuTriggered(QAction*)));
 }
 
-AstChanMon::~AstChanMon()
+MainWindow::~MainWindow()
 {
     delete ui;
+    delete sessionManagerMenu;
 }
 
-void AstChanMon::on_actionFullscreen_triggered(bool checked)
+void MainWindow::setup()
 {
-    if (checked) {
-        lastWindowState = windowState();
+    setWindowTitle(QApplication::applicationName());
 
-        showFullScreen();
-    } else {
-        setWindowState(lastWindowState);
+    sessionManagerButton->setParent(ui->mainToolBar);
+    sessionManagerButton->setIcon(QIcon(":/dialog/session manager"));
+    sessionManagerButton->setPopupMode(QToolButton::MenuButtonPopup);
+    sessionManagerButton->setMenu(sessionManagerMenu);
+
+    ui->mainToolBar->addWidget(sessionManagerButton);
+    ui->mainToolBar->addAction(ui->actionCloseSession);
+
+    setCentralWidget(sessionArea);
+    populateSession();
+    showSessionManager();
+}
+
+void MainWindow::populateSession()
+{
+    QSettings settings;
+    int size = settings.beginReadArray("sessions");
+
+    QMdiSubWindow *window = sessionArea->currentSubWindow();
+    QString name = (window != 0 ? window->windowTitle() : "");
+
+    sessionManagerMenu->clear();
+
+    for (int i = 0; i < size; ++i) {
+        settings.setArrayIndex(i);
+
+        QAction *action = sessionManagerMenu->addAction(settings.value("name").toString());
+        action->setCheckable(true);
+        action->setChecked(action->text() == name);
+    }
+
+    settings.endArray();
+}
+
+void MainWindow::openSessionWindow(QString name, QString hostname, quint16 port, QString username, QString password)
+{
+    foreach (QMdiSubWindow *subWindow, sessionArea->subWindowList()) {
+        if (subWindow->windowTitle() == name) {
+            subWindow->showMaximized();
+            subWindow->raise();
+
+            return;
+        }
+    }
+
+    SessionWindow *sessionWindow = new SessionWindow(this, hostname, port, username, password);
+    sessionArea->addSubWindow(sessionWindow);
+
+    sessionWindow->setWindowTitle(name);
+    sessionWindow->showMaximized();
+}
+
+void MainWindow::showSessionManager()
+{
+    SessionManagerDialog sessionManager(this);
+    if (sessionManager.exec() == QDialog::Accepted) {
+        openSessionWindow(sessionManager.getName(),
+                          sessionManager.getHostname(),
+                          sessionManager.getPort(),
+                          sessionManager.getUsername(),
+                          sessionManager.getPassword());
+    }
+
+    populateSession();
+}
+
+void MainWindow::onSubWindowActivated(QMdiSubWindow *window)
+{
+    QString name = (window != 0 ? window->windowTitle() : "");
+
+    foreach (QAction *action, sessionManagerMenu->actions()) {
+        action->setChecked(action->text() == name);
     }
 }
 
-void AstChanMon::on_actionMainToolbar_triggered(bool checked)
+void MainWindow::onSessionMenuTriggered(QAction *action)
 {
-    if (checked) {
-        ui->mainToolBar->show();
-    } else {
-        ui->mainToolBar->hide();
-    }
-}
+    QSettings settings;
+    QString name = action->text();
 
-void AstChanMon::on_actionStatusbar_triggered(bool checked)
-{
-    if (checked)  {
-        ui->statusBar->show();
-    } else {
-        ui->statusBar->hide();
-    }
-}
+    int size = settings.beginReadArray("sessions");
+    for (int i = 0; i < size; ++i) {
+        settings.setArrayIndex(i);
 
-void AstChanMon::on_actionAbout_triggered()
-{
-    QMessageBox::about(this, "About", "<b>Asterisk Channel Monitor</b><br>"
-                       "Asterisk&trade; IPPBX channels activities & Call Data Record(CDR) live monitor tool.<br>"
-                       "<br>Developed by <i>KAMPRETAN Labs</i>.<br>"
-                       "website: <a href=\"http://it.dnn.co.id\">http://it.dnn.co.id</a><br>"
-                       "email: <a href=\"mailto:it@dnn.co.id\">it@dnn.co.id</a><br>"
-                       "Copyright &copy; 2010 PT. Delta Nuansa Nirwana.");
-}
+        if (settings.value("name").toString() == name) {
+            openSessionWindow(name,
+                              settings.value("hostname").toString(),
+                              settings.value("port").toUInt(),
+                              settings.value("username").toString(),
+                              settings.value("password").toString());
 
-void AstChanMon::on_actionConnection_triggered(bool checked)
-{
-    if (checked) {
-        astHostForm->connectServer(hostEntry.text(), portEntry.value(), usernameEntry.text(), secretEntry.text());
-    } else {
-        astHostForm->disconnectServer();
+            break;
+        }
     }
 
-    ui->actionConnection->setText(checked ? "Disconnect" : "Connect");
+    settings.endArray();
 }
 
-void AstChanMon::onActiveCountsChanged(int activeChannels, int activeCalls)
+void MainWindow::on_actionCloseSession_triggered()
 {
-    channelsCount.setText(QVariant(activeChannels).toString().append(" Channels"));
-    callsCount.setText(QVariant(activeCalls).toString().append(" Calls"));
+    QMdiSubWindow *window = sessionArea->currentSubWindow();
+    if (window != 0)
+        window->close();
 }

@@ -1,25 +1,28 @@
-#ifndef ASTCHANFORM_H
-#define ASTCHANFORM_H
+#ifndef CHANNELFRAME_H
+#define CHANNELFRAME_H
 
-#include <QWidget>
+#include <QFrame>
 
 namespace Ui {
-    class AstChanForm;
+class ChannelFrame;
 }
 
-class AstChanForm : public QWidget {
+class ChannelFrame : public QFrame
+{
     Q_OBJECT
+
 public:
-    AstChanForm(QWidget *parent = 0);
-    ~AstChanForm();
+    explicit ChannelFrame(QWidget *parent = 0, QString channel = "", QString duration = "");
+    ~ChannelFrame();
 
-    void setLabel(int label, QString value);
-
-protected:
-    void changeEvent(QEvent *e);
+    void setState(int state, QString description);
 
 private:
-    Ui::AstChanForm *ui;
+    Ui::ChannelFrame *ui;
+    QString channel;
+
+protected:
+    void timerEvent(QTimerEvent *event);
 };
 
-#endif // ASTCHANFORM_H
+#endif // CHANNELFRAME_H
