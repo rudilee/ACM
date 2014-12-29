@@ -9,11 +9,19 @@
         <file>server_configuration.png</file>
     </qresource>
     <qresource prefix="/list">
-        <file alias="asterisk">asterisk-16.png</file>
+        <file alias="asterisk">asterisk 16 x.png</file>
     </qresource>
     <qresource prefix="/window">
         <file>telephone.png</file>
-        <file>asterisk-16.png</file>
         <file>asterisk 16 x.png</file>
+    </qresource>
+    <qresource prefix="/button">
+        <file>preferences.png</file>
+        <file>cog.png</file>
+    </qresource>
+    <qresource prefix="/menu">
+        <file alias="whisper">comment.png</file>
+        <file alias="hangup">cross.png</file>
+        <file alias="listen">ear_listen.png</file>
     </qresource>
 </RCC>

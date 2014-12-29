@@ -3,6 +3,9 @@
 
 #include <QMainWindow>
 #include <QToolButton>
+#include <QLineEdit>
+#include <QSpinBox>
+#include <QPushButton>
 #include <QMdiArea>
 
 namespace Ui {
@@ -21,9 +24,12 @@ private:
     Ui::MainWindow *ui;
     QToolButton *sessionManagerButton;
     QMenu *sessionManagerMenu;
+    QLineEdit *hostname, *username, *password;
+    QSpinBox *port;
+    QPushButton *quickConnect;
     QMdiArea *sessionArea;
 
-    void setup();
+    void setupToolbar();
     void populateSession();
     void openSessionWindow(QString name, QString hostname = "", quint16 port = 0, QString username = "", QString password = "");
 
@@ -32,6 +38,7 @@ private slots:
 
     void onSubWindowActivated(QMdiSubWindow *window);
     void onSessionMenuTriggered(QAction *action);
+    void onQuickConnectClicked();
 
     void on_actionCloseSession_triggered();
 };

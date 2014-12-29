@@ -1,6 +1,8 @@
 #include "sessionwindow.h"
 #include "ui_sessionwindow.h"
 
+#include <QNetworkInterface>
+#include <QMessageBox>
 #include <QDebug>
 
 SessionWindow::SessionWindow(QWidget *parent,
@@ -14,85 +16,234 @@ SessionWindow::SessionWindow(QWidget *parent,
     password(password)
 {
     ui->setupUi(this);
+    ui->scrollAreaWidgetContents->setLayout(&layout);
 
-    setup(hostname, port);
+    populateLocalAddress();
+    setupAsterisk(hostname, port);
 }
 
 SessionWindow::~SessionWindow()
 {
-    asterisk.disconnectFromHost();
+    asterisk.actionLogoff();
 
     delete ui;
 }
 
-void SessionWindow::setup(QString hostname, quint16 port)
+QString SessionWindow::parsePeer(QString channel)
 {
-    connect(&asterisk, SIGNAL(connected()), SLOT(onAsteriskConnected()));
-    connect(&asterisk, SIGNAL(receiveResponse(Asterisk::Response,QHash<QString,QString>)), SLOT(onAsteriskReceiveResponse(Asterisk::Response,QHash<QString,QString>)));
-    connect(&asterisk, SIGNAL(receiveEvent(Asterisk::Event,QHash<QString,QString>)), SLOT(onAsteriskReceiveEvent(Asterisk::Event,QHash<QString,QString>)));
+    QRegExp channelPattern("^(.+)\\-.+$");
+    QString peer;
 
-    asterisk.connectToHost(hostname, port);
+    if (channelPattern.indexIn(channel) > -1)
+        peer = channelPattern.cap(1);
 
-    ui->scrollAreaWidgetContents->setLayout(&layout);
+    return peer;
 }
 
-void SessionWindow::addChannel(QString channel, QString duration)
+QString SessionWindow::takeAction(QString action, QString actionId)
 {
-    ChannelFrame *frame = new ChannelFrame(this, channel, duration);
+    if (actions.value(action) == actionId)
+        return actions.take(actionId);
 
-    channels[channel] = frame;
-    layout.addWidget(frame);
+    return QString();
+}
+
+void SessionWindow::populateLocalAddress()
+{
+    foreach (const QHostAddress &address, QNetworkInterface::allAddresses()) {
+        if (address.protocol() == QAbstractSocket::IPv4Protocol /*&& address != QHostAddress(QHostAddress::LocalHost)*/)
+             localAddress << address.toString();
+    }
+}
+
+void SessionWindow::setupAsterisk(QString hostname, quint16 port)
+{
+    connect(&asterisk, SIGNAL(connected(QString)), SLOT(onAsteriskConnected(QString)));
+    connect(&asterisk, SIGNAL(responseSent(AsteriskManager::Response,QVariantMap,QString)),
+            SLOT(onAsteriskResponseSent(AsteriskManager::Response,QVariantMap, QString)));
+    connect(&asterisk, SIGNAL(eventGenerated(AsteriskManager::Event,QVariantMap)),
+            SLOT(onAsteriskEventGenerated(AsteriskManager::Event,QVariantMap)));
+
+    asterisk.connectToHost(hostname, port);
+}
+
+void SessionWindow::addPeer(QString peer)
+{
+    if (!peers.contains(peer)) {
+        PeerFrame *frame = new PeerFrame(this, peer);
+
+        peers[peer] = frame;
+        layout.addWidget(frame);
+
+        connect(frame, SIGNAL(commandTriggered(QString, QString)), SLOT(onPeerCommandTriggered(QString, QString)));
+    }
+}
+
+void SessionWindow::setPeerStatus(QString peer, QString registered)
+{
+    addPeer(peer);
+
+    peers[peer]->setStatus(registered == "Registered");
+}
+
+void SessionWindow::setPeerAddress(QString peer, QString ipAddress)
+{
+    addPeer(peer);
+
+    peers[peer]->setAddress(ipAddress);
+}
+
+void SessionWindow::addChannel(QString channel, int duration)
+{
+    QString peer = parsePeer(channel);
+
+    addPeer(peer);
+
+    peers[peer]->addChannel(channel, duration);
+}
+
+void SessionWindow::setChannelState(QString channel, QString state)
+{
+    addChannel(channel);
+
+    peers[parsePeer(channel)]->setChannelState(channel, state);
+}
+
+void SessionWindow::setChannelExtension(QString channel, QString extension)
+{
+    addChannel(channel);
+
+    peers[parsePeer(channel)]->setChannelExtension(channel, extension);
 }
 
 void SessionWindow::removeChannel(QString channel)
 {
-    layout.removeWidget(channels[channel]);
+    QString peer = parsePeer(channel);
 
-    delete channels.take(channel);
+    if (peer.contains(peer))
+        peers[peer]->removeChannel(channel);
 }
 
-void SessionWindow::onAsteriskConnected()
+void SessionWindow::onAsteriskConnected(QString version)
 {
-    asterisk.actionLogin(username, password);
+    actions["Login"] = asterisk.actionLogin(username, password);
 }
 
-void SessionWindow::onAsteriskReceiveResponse(Asterisk::Response response, QHash<QString, QString> headers)
+void SessionWindow::onAsteriskResponseSent(AsteriskManager::Response response, QVariantMap headers, QString actionId)
 {
-    switch (response) {
-    case Asterisk::Success:
+    if (actionId == actions.value("Login")) {
+        switch (response) {
+        case AsteriskManager::Success:
+            actions.remove("Login");
+            actions["Status"] = asterisk.action("Status");
+            actions["SIPpeers"] = asterisk.action("SIPpeers");
+
+            break;
+        case AsteriskManager::Error:
+            QMessageBox::warning(this, "Asterisk Manager", headers["Message"].toString());
+
+            ((QWidget *) parent())->close();
+
+            break;
+        }
+    }
+}
+
+void SessionWindow::onAsteriskEventGenerated(AsteriskManager::Event event, QVariantMap headers)
+{
+    QString actionId = headers["ActionID"].toString(),
+            channel = headers["Channel"].toString(),
+            peer = headers["Peer"].toString(),
+            state = headers[headers.contains("State") ? "State" : "ChannelStateDesc"].toString(),
+            address = headers["Address"].toString(),
+            extension = headers["Extension"].toString();
+
+    if (address.isEmpty()) {
+        if (headers.contains("IPaddress"))
+            address = QString("%1:%2").arg(headers["IPaddress"].toString(), headers["IPport"].toString());
+    }
+
+    if (extension.isEmpty()) {
+        if (headers.contains("ConnectedLineNum")) {
+            extension = headers["ConnectedLineNum"].toString();
+
+            if (extension.isEmpty())
+                extension = headers["ConnectedLineName"].toString();
+        }
+    }
+
+    switch (event) {
+    case AsteriskManager::PeerEntry:
+        if (actionId == actions.value("SIPpeers"))
+            peer = QString("%1/%2").arg(headers["Channeltype"].toString(), headers["ObjectName"].toString());
+
+        if (!address.isEmpty()) {
+            if (localAddress.contains(address))
+                selfPeer = peer;
+
+            if (!address.startsWith("-none-")) {
+                setPeerStatus(peer, "Registered");
+                setPeerAddress(peer, address);
+            }
+        }
+
+        addPeer(peer);
+
         break;
-    default:
+    case AsteriskManager::PeerStatus:
+        if (headers.contains("PeerStatus")) {
+            QString peerStatus = headers["PeerStatus"].toString();
+
+            if (peerStatus == "Unregistered")
+                peers[peer]->setAddress(QString());
+
+            setPeerStatus(peer, peerStatus);
+            setPeerAddress(peer, peerStatus == "Unregistered" ? QString() : address);
+        }
+
+        break;
+    case AsteriskManager::Status:
+        addChannel(channel, headers["Seconds"].toInt());
+        setChannelState(channel, state);
+
+        if (!extension.isEmpty())
+            setChannelExtension(channel, extension);
+
+        break;
+    case AsteriskManager::Newchannel:
+        addChannel(channel);
+        break;
+    case AsteriskManager::Newstate:
+        setChannelState(channel, state);
+
+        if (!extension.isEmpty())
+            setChannelExtension(channel, extension);
+
+        break;
+    case AsteriskManager::Newexten:
+        setChannelExtension(channel, extension);
+        break;
+    case AsteriskManager::Hangup:
+        removeChannel(channel);
+        break;
+    case AsteriskManager::StatusComplete:
+        takeAction("Status", actionId);
+        break;
+    case AsteriskManager::PeerlistComplete:
+        takeAction("SIPpeers", actionId);
         break;
     }
 }
 
-void SessionWindow::onAsteriskReceiveEvent(Asterisk::Event event, QHash<QString, QString> headers)
+void SessionWindow::onPeerCommandTriggered(QString channel, QString command)
 {
-    QString channel = headers["Channel"];
+    if (command == "Listen" || command == "Whisper") {
+        QString data = QString("%1,bq%2").arg(channel, command == "Whisper" ? "w" : QString());
 
-    switch (event) {
-    case Asterisk::FullyBooted:
-        asterisk.actionCoreShowChannels();
-        asterisk.actionDAHDIShowChannels();
-        asterisk.actionSIPpeers();
+        qDebug() << "Self Peer:" << selfPeer;
 
-        break;
-    case Asterisk::CoreShowChannel:
-    case Asterisk::Newchannel:
-        addChannel(channel, headers["Duration"]);
-    case Asterisk::Newstate:
-        if (channels.contains(channel))
-            channels[channel]->setState(headers["ChannelState"].toUInt(), headers["ChannelStateDesc"]);
-
-        break;
-    case Asterisk::DAHDIShowChannels:
-        break;
-    case Asterisk::PeerEntry:
-        break;
-    case Asterisk::Hangup:
-        removeChannel(headers["Channel"]);
-        break;
-    default:
-        break;
+        asterisk.actionOriginate("SIP/1002", QString(), "default", 0, "ExtenSpy", data, 0, command);
+    } else if (command == "Hangup") {
+        asterisk.actionHangup(channel);
     }
 }

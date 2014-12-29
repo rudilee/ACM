@@ -12,38 +12,73 @@ MainWindow::MainWindow(QWidget *parent) :
     ui(new Ui::MainWindow),
     sessionManagerButton(new QToolButton),
     sessionManagerMenu(new QMenu),
+    hostname(new QLineEdit),
+    username(new QLineEdit),
+    password(new QLineEdit),
+    port(new QSpinBox),
+    quickConnect(new QPushButton("Quick Connect")),
     sessionArea(new QMdiArea(this))
 {
     ui->setupUi(this);
 
-    setup();
+    setWindowTitle(QApplication::applicationName());
+    setCentralWidget(sessionArea);
+    setupToolbar();
+    populateSession();
 
     connect(sessionManagerButton, SIGNAL(clicked()), SLOT(showSessionManager()));
     connect(sessionArea, SIGNAL(subWindowActivated(QMdiSubWindow*)), SLOT(onSubWindowActivated(QMdiSubWindow*)));
     connect(sessionManagerMenu, SIGNAL(triggered(QAction*)), SLOT(onSessionMenuTriggered(QAction*)));
+    connect(quickConnect, SIGNAL(clicked()), SLOT(onQuickConnectClicked()));
 }
 
 MainWindow::~MainWindow()
 {
     delete ui;
-    delete sessionManagerMenu;
 }
 
-void MainWindow::setup()
+void MainWindow::setupToolbar()
 {
-    setWindowTitle(QApplication::applicationName());
-
     sessionManagerButton->setParent(ui->mainToolBar);
     sessionManagerButton->setIcon(QIcon(":/dialog/session manager"));
     sessionManagerButton->setPopupMode(QToolButton::MenuButtonPopup);
     sessionManagerButton->setMenu(sessionManagerMenu);
+    sessionManagerButton->setToolTip("Session Manager");
+
+    hostname->setParent(ui->mainToolBar);
+    hostname->setPlaceholderText("Asterisk hostname");
+    hostname->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+
+    port->setParent(ui->mainToolBar);
+    port->setMaximum(65000);
+    port->setValue(5038);
+    port->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+
+    username->setParent(ui->mainToolBar);
+    username->setPlaceholderText("AMI username");
+    username->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+
+    password->setParent(ui->mainToolBar);
+    password->setPlaceholderText("AMI secret");
+    password->setEchoMode(QLineEdit::Password);
+    password->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+
+    quickConnect->setParent(ui->mainToolBar);
+    quickConnect->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
 
     ui->mainToolBar->addWidget(sessionManagerButton);
     ui->mainToolBar->addAction(ui->actionCloseSession);
+    ui->mainToolBar->addSeparator();
+    ui->mainToolBar->addWidget(hostname);
+    ui->mainToolBar->addWidget(port);
+    ui->mainToolBar->addWidget(username);
+    ui->mainToolBar->addWidget(password);
+    ui->mainToolBar->addWidget(quickConnect);
 
-    setCentralWidget(sessionArea);
-    populateSession();
-    showSessionManager();
+    QWidget *spacer = new QWidget(ui->mainToolBar);
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+
+    ui->mainToolBar->addWidget(spacer);
 }
 
 void MainWindow::populateSession()
@@ -129,6 +164,11 @@ void MainWindow::onSessionMenuTriggered(QAction *action)
     }
 
     settings.endArray();
+}
+
+void MainWindow::onQuickConnectClicked()
+{
+    openSessionWindow(hostname->text().prepend("Quick Connect: "), hostname->text(), port->value(), username->text(), password->text());
 }
 
 void MainWindow::on_actionCloseSession_triggered()

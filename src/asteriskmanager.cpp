@@ -1,316 +1,307 @@
+#include <QUuid>
+
 #include "asteriskmanager.h"
 
-#include <QStringList>
-#include <QRegExp>
-#include <QDateTime>
-
-#include <QDebug>
-
-AsteriskManager::AsteriskManager() :
-    QTcpSocket()
+AsteriskManager::AsteriskManager(QObject *parent) :
+	QTcpSocket(parent),
+	responseEnum(AsteriskManager::staticMetaObject.enumerator(AsteriskManager::staticMetaObject.indexOfEnumerator("Response"))),
+	eventEnum(AsteriskManager::staticMetaObject.enumerator(AsteriskManager::staticMetaObject.indexOfEnumerator("Event")))
 {
-    asteriskResponse << "Success"
-                     << "Error";
-
-    asteriskEvent << "FullyBooted"
-                  << "CoreShowChannel"
-                  << "DAHDIShowChannels"
-                  << "PeerEntry"
-                  << "ExtensionStatus"
-                  << "QueueParams"
-                  << "QueueMember"
-                  << "QueueMemberStatus"
-                  << "QueueMemberAdded"
-                  << "QueueMemberRemoved"
-                  << "QueueMemberPaused"
-                  << "Newchannel"
-                  << "Newstate"
-                  << "Dial"
-                  << "Hangup"
-                  << "Bridge"
-                  << "Unlink"
-                  << "Cdr";
-
-    connect(this, SIGNAL(error(QAbstractSocket::SocketError)), SLOT(onError(QAbstractSocket::SocketError)));
-    connect(this, SIGNAL(readyRead()), SLOT(onReadyRead()));
+	connect(this, SIGNAL(readyRead()), SLOT(onReadyRead()));
 }
 
-void AsteriskManager::connectToHost(const QString &hostName, quint16 port)
+QString AsteriskManager::eventValue(AsteriskManager::Event event)
 {
-    QTcpSocket::connectToHost(hostName, port);
+    return eventEnum.valueToKey(event);
 }
 
-QString AsteriskManager::actionLogin(QString username, QString secret)
+QString AsteriskManager::version()
 {
-    QHash<QString, QString> headers;
-    headers["Username"] = username;
-    headers["Secret"] = secret;
-
-    return sendAction("Login", headers);
+    return version_;
 }
 
-QString AsteriskManager::actionLogoff()
+QString AsteriskManager::action(QString action, QVariantMap headers)
 {
-    return sendAction("Logoff");
-}
+    QString actionID = QString();
 
-QString AsteriskManager::actionStatus(QString channel, QStringList variables)
-{
-    QHash<QString, QString> headers;
-    headers["Channel"] = channel;
+//    qDebug("<action>");
 
-    if (!variables.isEmpty())
-        headers["Variables"] = variables.join(',');
+    if (state() == QAbstractSocket::ConnectedState) {
+        actionID = QUuid::createUuid().toString();
 
-    return sendAction("Status", headers);
-}
+        headers["ActionID"] = actionID;
+        headers["Action"] = action;
 
-QString AsteriskManager::actionCoreStatus()
-{
-    return sendAction("CoreStatus");
-}
+        QMapIterator<QString, QVariant> header(headers);
+        while (header.hasNext()) {
+            header.next();
 
-QString AsteriskManager::actionCoreSettings()
-{
-    return sendAction("CoreSettings");
-}
+//            qDebug() << QString(header.key()).append(":") << header.value();
 
-QString AsteriskManager::actionCoreShowChannels()
-{
-    return sendAction("CoreShowChannels");
-}
-
-QString AsteriskManager::actionWaitEvent(int timeout)
-{
-    QHash<QString, QString> headers;
-    headers["Timeout"] = timeout;
-
-    return sendAction("WaitEvent", headers);
-}
-
-QString AsteriskManager::actionOriginate(QString channel,
-                                      QString exten,
-                                      QString context,
-                                      uint priority,
-                                      QString application,
-                                      QString data,
-                                      int timeout,
-                                      QString callerId,
-                                      QStringList variables,
-                                      QString account,
-                                      bool async,
-                                      QStringList codecs)
-{
-    QHash<QString, QString> headers;
-    headers["Channel"] = channel;
-
-    if (!exten.isEmpty() && !context.isEmpty() && priority > 0) {
-        headers["Exten"] = exten;
-        headers["Context"] = context;
-        headers["Priority"] = QString::number(priority);
-    }
-
-    if (!application.isEmpty()) {
-        headers["Application"] = application;
-
-        if (!data.isEmpty())
-            headers["Data"] = data;
-    }
-
-    if (timeout > 0)
-        headers["Timeout"] = QString::number(timeout);
-
-    if (!callerId.isEmpty())
-        headers["CallerID"] = callerId;
-
-    if (!variables.isEmpty()) {
-        foreach (QString variable, variables) {
-            headers.insertMulti("Variable", variable);
+            write(QString("%1: %2\r\n").arg(header.key(), valueToString(header.value())).toLatin1());
         }
+
+        write("\r\n");
     }
 
-    if (!account.isEmpty())
-        headers["Account"] = account;
+//    qDebug("</action>");
 
-    headers["Async"] = (async ? "true" : "false");
-
-    if (!codecs.isEmpty())
-        headers["Codecs"] = codecs.join(',');
-
-    qDebug() << "Asterisk Originate.." << "Channel:" << channel << "Exten:" << exten;
-
-    return sendAction("Originate", headers);
+    return actionID;
 }
 
 QString AsteriskManager::actionHangup(QString channel, uint cause)
 {
-    QHash<QString, QString> headers;
-    headers["Channel"] = channel;
+	QVariantMap headers;
+	headers["Channel"] = channel;
 
-    if (cause > 0)
-        headers["Cause"] = QString::number(cause);
+	insertNotEmpty(&headers, "Cause", cause);
 
-    qDebug("Asterisk Hangup..");
-
-    return sendAction("Hangup", headers);
+    return action("Hangup", headers);
 }
 
-QString AsteriskManager::actionDAHDIShowChannels()
+QString AsteriskManager::actionLogin(QString username, QString secret)
 {
-    return sendAction("DAHDIShowChannels");
+	QVariantMap headers;
+	headers["Username"] = username;
+
+	insertNotEmpty(&headers, "Secret", secret);
+
+    return action("Login", headers);
 }
 
-QString AsteriskManager::actionSIPpeers()
+QString AsteriskManager::actionLogoff()
 {
-    return sendAction("SIPpeers");
+    return action("Logoff");
 }
 
-QString AsteriskManager::actionSIPshowpeer(QString peer)
+QString AsteriskManager::actionOriginate(QString channel,
+										 QString exten,
+										 QString context,
+										 uint priority,
+										 QString application,
+										 QString data,
+										 uint timeout,
+										 QString callerID,
+										 QVariantMap variables,
+										 QString account,
+										 boolean earlyMedia,
+										 boolean async,
+										 QStringList codecs)
 {
-    QHash<QString, QString> headers;
-    headers["Peer"] = peer;
+	QVariantMap headers;
+	headers["Channel"] = channel;
 
-    return sendAction("SIPshowpeer", headers);
+	insertNotEmpty(&headers, "Exten", exten);
+	insertNotEmpty(&headers, "Context", context);
+	insertNotEmpty(&headers, "Priority", priority);
+	insertNotEmpty(&headers, "Application", application);
+	insertNotEmpty(&headers, "Data", data);
+	insertNotEmpty(&headers, "Timeout", timeout);
+	insertNotEmpty(&headers, "CallerID", callerID);
+	insertNotEmpty(&headers, "Account", account);
+	insertNotEmpty(&headers, "EarlyMedia", earlyMedia);
+	insertNotEmpty(&headers, "Async", async);
+	insertNotEmpty(&headers, "Codecs", codecs.join(','));
+
+	qDebug() << "Headers:" << headers;
+
+	if (!variables.isEmpty()) {
+		QMapIterator<QString, QVariant> variable(variables);
+		while (variable.hasNext()) {
+			variable.next();
+
+			headers.insertMulti("Variable", QString("%1=%2").arg(variable.key(), valueToString(variable.value())));
+		}
+	}
+
+    return action("Originate", headers);
 }
 
-QString AsteriskManager::actionQueueStatus(QString queue, QString member)
+QString AsteriskManager::actionPark(QString channel, QString channel2, uint timeout, QString parkinglot)
 {
-    QHash<QString, QString> headers;
+	QVariantMap headers;
+	headers["Channel"] = channel;
+	headers["Channel2"] = channel2;
 
-    if (!queue.isEmpty())
-        headers["Queue"] = queue;
+	insertNotEmpty(&headers, "Timeout", timeout);
+	insertNotEmpty(&headers, "Parkinglot", parkinglot);
 
-    if (!member.isEmpty())
-        headers["Member"] = member;
-
-    return sendAction("QueueStatus", headers);
+    return action("Park", headers);
 }
 
-QString AsteriskManager::actionQueueAdd(QString queue, QString interface, bool paused)
+QString AsteriskManager::actionPlayDTMF(QString channel, QString digit)
 {
-    QHash<QString, QString> headers;
-    headers["Queue"] = queue;
-    headers["Interface"] = interface;
+	QVariantMap headers;
+	headers["Channel"] = channel;
+	headers["Digit"] = digit;
 
-    if (paused)
-        headers["Paused"] = "true";
+    return action("PlayDTMF", headers);
+}
 
-    return sendAction("QueueAdd", headers);
+QString AsteriskManager::actionQueueAdd(QString queue,
+										QString interface,
+										uint penalty,
+										boolean paused,
+										QString memberName,
+										QString stateInterface)
+{
+	QVariantMap headers;
+	headers["Queue"] = queue;
+	headers["Interface"] = interface;
+
+	insertNotEmpty(&headers, "Penalty", penalty);
+	insertNotEmpty(&headers, "Paused", paused);
+	insertNotEmpty(&headers, "MemberName", memberName);
+	insertNotEmpty(&headers, "StateInterface", stateInterface);
+
+    return action("QueueAdd", headers);
+}
+
+QString AsteriskManager::actionQueuePause(QString interface, boolean paused, QString queue, QString reason)
+{
+	QVariantMap headers;
+	headers["Interface"] = interface;
+	headers["Paused"] = paused;
+
+    insertNotEmpty(&headers, "Queue", queue);
+	insertNotEmpty(&headers, "Reason", reason);
+
+    return action("QueuePause", headers);
 }
 
 QString AsteriskManager::actionQueueRemove(QString queue, QString interface)
 {
-    QHash<QString, QString> headers;
-    headers["Queue"] = queue;
-    headers["Interface"] = interface;
+	QVariantMap headers;
+	headers["Queue"] = queue;
+	headers["Interface"] = interface;
 
-    return sendAction("QueueRemove", headers);
+    return action("QueueRemove");
 }
 
-QString AsteriskManager::actionQueuePause(QString interface,
-                                       bool paused,
-                                       QString queue,
-                                       QString reason)
+QString AsteriskManager::actionQueueStatus(QString queue, QString member)
 {
-    QHash<QString, QString> headers;
-    headers["Interface"] = interface;
-    headers["Paused"] = paused ? "True" : "False";
+	QVariantMap headers;
 
-    if (!queue.isEmpty())
-        headers["Queue"] = queue;
+	insertNotEmpty(&headers, "Queue", queue);
+	insertNotEmpty(&headers, "Member", member);
 
-    if (!reason.isEmpty())
-        headers["Reason"] = reason;
-
-    return sendAction("QueuePause", headers);
+    return action("QueueStatus", headers);
 }
 
-QString AsteriskManager::sendAction(QString action, QHash<QString, QString> headers)
+QString AsteriskManager::actionRedirect(QString channel,
+										QString exten,
+										QString context,
+										uint priority,
+										QString extraChannel,
+										QString extraExten,
+										QString extraContext,
+										uint extraPriority)
 {
-    // TODO: pastiin kalo login berhasil baru jalanin action
-    if (state() != ConnectedState)
-        return "";
+	QVariantMap headers;
+	headers["Channel"] = channel;
+	headers["Exten"] = exten;
+	headers["Context"] = context;
+	headers["Priority"] = priority;
 
-    QByteArray message = QString("Action: ").append(action).toLatin1();
-    QString actionId = QDateTime::currentDateTime().toString("yyyyMMddHHmmsszzz");
+	insertNotEmpty(&headers, "ExtraChannel", extraChannel);
+	insertNotEmpty(&headers, "ExtraExten", extraExten);
+	insertNotEmpty(&headers, "ExtraContext", extraContext);
+	insertNotEmpty(&headers, "ExtraPriority", extraPriority);
 
-    headers["ActionID"] = actionId;
-
-    QHashIterator<QString, QString> header(headers);
-    while (header.hasNext()) {
-        header.next();
-
-        message.append(QString("\n%1: %2").arg(header.key(), header.value()));
-    }
-
-    write(message.append("\n\n"));
-
-    return actionId;
+    return action("Redirect", headers);
 }
 
-void AsteriskManager::parseMessageBuffer()
+QString AsteriskManager::actionSIPshowpeer(QString peer)
 {
-    qDebug("Try to Parse Asterisk Message buffer");
+	QVariantMap headers;
+	headers["Peer"] = peer;
 
-    QRegExp keyValue("([A-Za-z0-9\\-]+):\\s(.*)\r\n");
-    QHash<QString, QString> headers;
-
-    while (!messageQueue.isEmpty()) {
-        if (keyValue.indexIn(messageQueue.dequeue()) > -1)
-            headers[keyValue.cap(1)] = keyValue.cap(2);
-    }
-
-    if (headers.contains("Response"))
-        emit receiveResponse((Asterisk::Response) asteriskResponse.indexOf(headers["Response"]), headers);
-    else if (headers.contains("Event"))
-        emit receiveEvent((Asterisk::Event) asteriskEvent.indexOf(headers["Event"]), headers);
-
-    messageBuffer.clear();
+    return action("SIPshowpeer", headers);
 }
 
-void AsteriskManager::onError(QAbstractSocket::SocketError socketError)
+QString AsteriskManager::valueToString(QVariant value)
 {
-    QString message;
+	switch (value.type()) {
+	case QMetaType::Char:
+		return value.toChar() == 1 ? "true" : "false";
+	default:
+		return value.toString();
+	}
+}
 
-    switch (socketError) {
-    case QAbstractSocket::ConnectionRefusedError:
-        message = "The connection was refused (or timed out)";
-        break;
-    case QAbstractSocket::RemoteHostClosedError:
-        message = "The remote host closed the connection";
-        break;
-    case QAbstractSocket::HostNotFoundError:
-        message = "The host address was not found";
-        break;
-    case QAbstractSocket::NetworkError:
-        message = "An error occurred with the network\n (e.g., the network cable was accidentally plugged out).";
-        break;
-    default:
-        message = "Misc. connection error";
-    }
+QVariant AsteriskManager::stringValue(QString string)
+{
+	QVariant value(string);
 
-    emit connectionError(message);
+	if (string == "true" || string == "false")
+		value.setValue(string == "true");
+	else if (QVariant(value).convert(QMetaType::UInt))
+		value.setValue(string.toUInt());
 
-    qDebug() << "Asterisk Connection Error:" << socketError;
+	return value;
+}
+
+void AsteriskManager::insertNotEmpty(QVariantMap *headers, QString key, QVariant value)
+{
+	bool isEmpty = false;
+
+	switch (value.type()) {
+	case QMetaType::Int:
+		isEmpty = value.toChar() == -1;
+		break;
+	case QMetaType::UInt:
+		isEmpty = value.toUInt() == 0;
+		break;
+	default:
+		isEmpty = value.isNull();
+		break;
+	}
+
+	if (!isEmpty)
+		headers->insert(key, value);
+}
+
+void AsteriskManager::dispatchPacket()
+{
+	if (packetBuffer.contains("Response")) {
+		QString actionID = packetBuffer["ActionID"].toString();
+		Response response = (Response) responseEnum.keyToValue(packetBuffer["Response"].toByteArray().data());
+
+		emit responseSent(response, packetBuffer, actionID);
+	} else if (packetBuffer.contains("Event")) {
+		Event event = (Event) eventEnum.keyToValue(packetBuffer["Event"].toByteArray().data());
+
+		emit eventGenerated(event, packetBuffer);
+	}
+
+	packetBuffer.clear();
 }
 
 void AsteriskManager::onReadyRead()
 {
-    QByteArray line;
+	QRegExp keyValue("^([A-Za-z0-9\\-]+):\\s(.+)$");
+	QByteArray line;
 
-    qDebug("\n[AMI_START]");
-    QString debugLines;
+    qDebug("<ami>");
 
-    while (canReadLine()) {
-        line = readLine();
-        debugLines += QString(line).trimmed().append("\n");
+	while (canReadLine()) {
+		line = readLine();
 
-        if (line != "\r\n")
-            messageQueue.enqueue(line);
-        else
-            parseMessageBuffer();
-    }
+        qDebug() << line.trimmed();
 
-    qDebug() << debugLines;
-    qDebug("[AMI_END]\n");
+		if (line != "\r\n") {
+            if (keyValue.indexIn(line) > -1) {
+				packetBuffer[keyValue.cap(1)] = stringValue(keyValue.cap(2).trimmed());
+            } else if (line.startsWith("Asterisk Call Manager")) {
+                version_ = line.replace("Asterisk Call Manager/", QByteArray()).trimmed();
+
+                emit connected(version_);
+            }
+		} else if (!packetBuffer.isEmpty()) {
+			dispatchPacket();
+		}
+	}
+
+    qDebug("</ami>");
 }
+

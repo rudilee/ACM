@@ -3,6 +3,7 @@
 
 #include "asteriskmanager.h"
 #include "channelframe.h"
+#include "peerframe.h"
 #include "flowlayout.h"
 
 #include <QWidget>
@@ -27,17 +28,31 @@ private:
     Ui::SessionWindow *ui;
     AsteriskManager asterisk;
     QString username, password;
-    QHash<QString, ChannelFrame *> channels;
+    QHash<QString, PeerFrame *> peers; // Peer, Frame
     FlowLayout layout;
+    QHash<QString, QString> actions; // Action, Action ID
+    QStringList localAddress;
+    QString selfPeer;
 
-    void setup(QString hostname, quint16 port);
-    void addChannel(QString channel, QString duration);
+    QString parsePeer(QString channel);
+    QString takeAction(QString action, QString actionId);
+
+    void populateLocalAddress();
+    void setupAsterisk(QString hostname, quint16 port);
+    void addPeer(QString peer);
+    void setPeerStatus(QString peer, QString registered);
+    void setPeerAddress(QString peer, QString ipAddress);
+    void addChannel(QString channel, int duration = 0);
+    void setChannelState(QString channel, QString state);
+    void setChannelExtension(QString channel, QString extension);
     void removeChannel(QString channel);
 
 private slots:
-    void onAsteriskConnected();
-    void onAsteriskReceiveResponse(Asterisk::Response response, QHash<QString, QString> headers);
-    void onAsteriskReceiveEvent(Asterisk::Event event, QHash<QString, QString> headers);
+    void onAsteriskConnected(QString version);
+    void onAsteriskResponseSent(AsteriskManager::Response response, QVariantMap headers, QString actionId);
+    void onAsteriskEventGenerated(AsteriskManager::Event event, QVariantMap headers);
+
+    void onPeerCommandTriggered(QString channel, QString command);
 };
 
 #endif // SESSIONWINDOW_H
