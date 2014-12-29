@@ -240,9 +240,7 @@ void SessionWindow::onPeerCommandTriggered(QString channel, QString command)
     if (command == "Listen" || command == "Whisper") {
         QString data = QString("%1,bq%2").arg(channel, command == "Whisper" ? "w" : QString());
 
-        qDebug() << "Self Peer:" << selfPeer;
-
-        asterisk.actionOriginate("SIP/1002", QString(), "default", 0, "ExtenSpy", data, 0, command);
+        asterisk.actionOriginate(selfPeer, QString(), "default", 0, "ExtenSpy", data, 0, command);
     } else if (command == "Hangup") {
         asterisk.actionHangup(channel);
     }
