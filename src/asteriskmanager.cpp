@@ -101,7 +101,7 @@ QString AsteriskManager::actionOriginate(QString channel,
 	insertNotEmpty(&headers, "Account", account);
 	insertNotEmpty(&headers, "EarlyMedia", earlyMedia);
 	insertNotEmpty(&headers, "Async", async);
-	insertNotEmpty(&headers, "Codecs", codecs.join(','));
+	insertNotEmpty(&headers, "Codecs", codecs.join(","));
 
 	qDebug() << "Headers:" << headers;
 
@@ -235,7 +235,7 @@ QVariant AsteriskManager::stringValue(QString string)
 
 	if (string == "true" || string == "false")
 		value.setValue(string == "true");
-	else if (QVariant(value).convert(QMetaType::UInt))
+	else if (QVariant(value).convert(QVariant::UInt))
 		value.setValue(string.toUInt());
 
 	return value;

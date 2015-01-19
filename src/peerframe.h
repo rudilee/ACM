@@ -2,6 +2,7 @@
 #define PEERFRAME_H
 
 #include <QFrame>
+#include <QHash>
 
 #include "channelframe.h"
 
